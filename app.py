@@ -1,9 +1,9 @@
 import re
 import pandas as pd
 import streamlit as st
-st.write("VERSION: TAB-SEARCH v0.2")
-st.set_page_config(page_title="منصة التحقيق الرقمي - MVP", layout="wide")
 
+st.set_page_config(page_title="منصة التحقيق الرقمي - MVP", layout="wide")
+st.write("VERSION: TAB-SEARCH v0.2")
 # ----------------- Arabic helpers -----------------
 AR_DIACRITICS = re.compile(r"[\u0617-\u061A\u064B-\u0652\u0670\u06D6-\u06ED]")
 
@@ -166,4 +166,5 @@ with tab2:
 with tab3:
     st.subheader("📦 الكتب الحديثية (قيد التطوير)")
     st.write("سنضيف هنا لاحقًا: بطاقة الكتاب الحديثية والإحصاءات (عدد الأحاديث/الأسانيد/المتون/المكرر...).")
+
 
