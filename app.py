@@ -1,7 +1,7 @@
 import re
 import pandas as pd
 import streamlit as st
-
+st.write("VERSION: TAB-SEARCH v0.2")
 st.set_page_config(page_title="منصة التحقيق الرقمي - MVP", layout="wide")
 
 # ----------------- Arabic helpers -----------------
@@ -166,3 +166,4 @@ with tab2:
 with tab3:
     st.subheader("📦 الكتب الحديثية (قيد التطوير)")
     st.write("سنضيف هنا لاحقًا: بطاقة الكتاب الحديثية والإحصاءات (عدد الأحاديث/الأسانيد/المتون/المكرر...).")
+
