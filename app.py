@@ -86,84 +86,66 @@ st.title("📚 منصة التحقيق الرقمي للإسناد والمتن 
 tab1, tab2, tab3 = st.tabs(["🔎 البحث عن الحديث", "🧾 تقييم الرواة (قيد التطوير)", "📦 الكتب الحديثية (قيد التطوير)"])
 
 # ============ TAB 1: SEARCH ============
+# ============ TAB 1: SEARCH ============
 with tab1:
     st.subheader("🔎 البحث عن الحديث بكل طرقه")
     st.caption("اكتب المتن (أو جزءًا منه). سيعرض النظام النتائج الأقرب، ويجمع الطرق المتعددة تحت نفس الحديث.")
 
-    query = st.text_area("نص البحث (المتن)", height=120, placeholder="مثال: أصيب أنفه فاتخذ أنفًا من ورق...")
+    query = st.text_area(
+        "نص البحث (المتن)",
+        height=120,
+        placeholder="مثال: أصيب أنفه فاتخذ أنفًا من ورق..."
+    )
 
-colA, colB, colC = st.columns(3)
+    colA, colB, colC = st.columns(3)
 
-with colA:
-    min_sim = st.slider("٪ الحد الأدنى للتشابه", 10, 100, 50, 5)
+    with colA:
+        min_sim = st.slider("٪ الحد الأدنى للتشابه", 10, 100, 50, 5)
 
-with colB:
-    top_k = st.slider("عدد النتائج (الطرق) المعروضة", 5, 200, 30, 5)
+    with colB:
+        top_k = st.slider("عدد النتائج (الطرق) المعروضة", 5, 200, 30, 5)
 
-with colC:
-    group_view = st.checkbox("تجميع النتائج حسب الحديث (عرض كل الطرق)", value=True)
+    with colC:
+        group_view = st.checkbox("تجميع النتائج حسب الحديث (عرض كل الطرق)", value=True)
 
-search_mode = st.selectbox(
-    "طريقة البحث",
-    ["الاثنين معًا (أفضل)", "احتواء النص", "تشابه بالكلمات"],
-    index=0
-)
+    search_mode = st.selectbox(
+        "طريقة البحث",
+        ["الاثنين معًا (أفضل)", "احتواء النص", "تشابه بالكلمات"],
+        index=0
+    )
 
-if st.button("ابحث", type="primary"):
+    if st.button("ابحث", type="primary"):
         q = query.strip()
         if not q:
             st.warning("اكتب نصًا للبحث أولًا.")
         else:
-            # compute similarity against each matn row
-            sims = []
             q_norm = normalize_ar(q)
-            for idx, row in df_hadith.iterrows():
-                matn = str(row["matn"])
-                sim = similarity_by_reference_words(q_norm, matn)
-                sims.append(sim)
-
             results = df_hadith.copy()
-            results["similarity"] = sims
-            results = results.sort_values("similarity", ascending=False)
-
-            # filter and limit
-            results = results[results["similarity"] >= float(min_sim)].head(int(top_k))
+            results["similarity"] = results["matn"].astype(str).apply(
+                lambda x: similarity_by_reference_words(q_norm, x)
+            )
+            results = results[results["similarity"] >= float(min_sim)]
+            results = results.sort_values("similarity", ascending=False).head(int(top_k))
 
             if results.empty:
-                st.error("لا توجد نتائج ضمن حد التشابه المحدد. جرّب تخفيض الحد الأدنى.")
+                st.error("لا توجد نتائج ضمن حد التشابه المحدد.")
             else:
                 st.success(f"تم العثور على {len(results)} طريق/رواية ضمن التشابه ≥ {min_sim}%")
 
-                if group_view:
-                    # group by hadith_key to show all paths
-                    for hadith_key, grp in results.groupby("hadith_key"):
-                        best = grp.iloc[0]
-                        header = f"حديث: {hadith_key} — أفضل تشابه: {best['similarity']:.2f}%"
-                        with st.expander(header, expanded=True):
-                            st.write(f"**المتن (أقرب نتيجة):** {best['matn']}")
-                            st.write(f"**عدد الطرق المعروضة لهذا الحديث:** {len(grp)}")
-                            st.divider()
-                            for _, r in grp.iterrows():
-                                st.markdown(
-                                    f"- **المصدر:** {r['source']} | **المرجع:** {r['ref']} | **التشابه:** {r['similarity']:.2f}%\n"
-                                    f"  - **السند:** {r['isnad']}\n"
-                                    f"  - **المتن:** {r['matn']}"
-                                )
-                else:
-                    # flat view
-                    for _, r in results.iterrows():
-                        st.markdown(
-                            f"**{r['source']} — {r['ref']}** | التشابه: **{r['similarity']:.2f}%**\n\n"
-                            f"- السند: {r['isnad']}\n"
-                            f"- المتن: {r['matn']}\n"
-                            "---"
-                        )
+                for hadith_key, grp in results.groupby("hadith_key"):
+                    best = grp.iloc[0]
+                    with st.expander(f"حديث: {hadith_key} — أفضل تشابه: {best['similarity']:.2f}%", expanded=True):
+                        st.write(f"**المتن:** {best['matn']}")
+                        for _, r in grp.iterrows():
+                            st.markdown(
+                                f"- **المصدر:** {r['source']} | **المرجع:** {r['ref']} | **التشابه:** {r['similarity']:.2f}%\n"
+                                f"  - **السند:** {r['isnad']}"
+                            )
 
     st.divider()
     st.info(
         "📌 لإضافة بياناتك الحقيقية: ضع ملف باسم **hadith_data.csv** داخل المستودع بنفس الأعمدة:\n"
-        "`hadith_key, source, ref, isnad, matn`\n"
-        "وسيعتمد عليه التطبيق تلقائيًا."
+        "`hadith_key, source, ref, isnad, matn`"
     )
 
 # ============ TAB 2 Placeholder ============
@@ -175,6 +157,7 @@ with tab2:
 with tab3:
     st.subheader("📦 الكتب الحديثية (قيد التطوير)")
     st.write("سنضيف هنا لاحقًا: بطاقة الكتاب الحديثية والإحصاءات (عدد الأحاديث/الأسانيد/المتون/المكرر...).")
+
 
 
 
