@@ -125,48 +125,45 @@ with tab1:
             from rapidfuzz import fuzz
 
             q_norm = normalize_ar(q)
-
-            # فلترة حسب المصدر
             df = df_hadith.copy()
+
             if source_filter:
                 df = df[df["source"].astype(str).isin(source_filter)]
 
-            # درجات البحث
             df["matn_norm"] = df["matn"].astype(str).apply(normalize_ar)
             df["contains"] = df["matn_norm"].apply(lambda x: q_norm in x)
-
-            # Fuzzy (مرن لفظيًا)
             df["fuzzy"] = df["matn_norm"].apply(lambda x: fuzz.token_set_ratio(q_norm, x))
+            df["similarity"] = df["matn"].astype(str).apply(
+                lambda x: similarity_by_reference_words(q_norm, x)
+            )
 
-            # تشابه كلمات
-            df["similarity"] = df["matn"].astype(str).apply(lambda x: similarity_by_reference_words(q_norm, x))
-
-            # اختيار طريقة البحث
             if search_mode == "احتواء النص":
-                results = df[df["contains"] == True]
+                results = df[df["contains"]]
             elif search_mode == "تشابه بالكلمات":
                 results = df[df["similarity"] >= float(min_sim)]
             else:
-                results = df[(df["contains"] == True) | (df["similarity"] >= float(min_sim))]
+                results = df[(df["contains"]) | (df["similarity"] >= float(min_sim))]
 
-            # ترتيب النتائج
-            results = results.sort_values(["contains", "fuzzy", "similarity"], ascending=[False, False, False]).head(int(top_k))
+            results = results.sort_values(
+                ["contains", "fuzzy", "similarity"],
+                ascending=[False, False, False]
+            ).head(int(top_k))
 
             if results.empty:
-                st.error("لا توجد نتائج. جرّب تخفيض حد التشابه أو غيّر كلمات البحث.")
+                st.error("لا توجد نتائج. جرّب تغيير الكلمات أو تخفيض حد التشابه.")
             else:
-                st.success(f"تم العثور على {len(results)} نتيجة (طريق/رواية) ضمن الفلاتر المختارة.")
+                st.success(f"تم العثور على {len(results)} نتيجة (طريق/رواية).")
 
                 for hadith_key, grp in results.groupby("hadith_key"):
                     best = grp.iloc[0]
                     with st.expander(
-                        f"حديث: {hadith_key} — احتواء: {bool(best['contains'])} — Fuzzy: {best['fuzzy']:.0f}% — تشابه كلمات: {best['similarity']:.0f}%",
+                        f"حديث: {hadith_key} — Fuzzy: {best['fuzzy']:.0f}% — تشابه كلمات: {best['similarity']:.0f}%",
                         expanded=True
                     ):
                         st.write(f"**المتن:** {best['matn']}")
                         for _, r in grp.iterrows():
                             st.markdown(
-                                f"- **المصدر:** {r['source']} | **المرجع:** {r['ref']} | **Fuzzy:** {r['fuzzy']:.0f}% | **تشابه كلمات:** {r['similarity']:.0f}%\n"
+                                f"- **المصدر:** {r['source']} | **المرجع:** {r['ref']}\n"
                                 f"  - **السند:** {r['isnad']}"
                             )
 
@@ -186,6 +183,7 @@ with tab2:
 with tab3:
     st.subheader("📦 الكتب الحديثية (قيد التطوير)")
     st.write("سنضيف هنا لاحقًا: بطاقة الكتاب الحديثية والإحصاءات (عدد الأحاديث/الأسانيد/المتون/المكرر...).")
+
 
 
 
