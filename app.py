@@ -86,7 +86,7 @@ st.title("📚 منصة التحقيق الرقمي للإسناد والمتن 
 tab1, tab2, tab3 = st.tabs(["🔎 البحث عن الحديث", "🧾 تقييم الرواة (قيد التطوير)", "📦 الكتب الحديثية (قيد التطوير)"])
 
 # ============ TAB 1: SEARCH ============
-# ============ TAB 1: SEARCH ============
+
 with tab1:
     st.subheader("🔎 البحث عن الحديث بكل طرقه")
     st.caption("اكتب المتن (أو جزءًا منه). سيعرض النظام النتائج الأقرب، ويجمع الطرق المتعددة تحت نفس الحديث.")
@@ -114,31 +114,59 @@ with tab1:
         index=0
     )
 
+    sources = sorted(df_hadith["source"].astype(str).unique().tolist())
+    source_filter = st.multiselect("اختر المصدر/الكتاب", sources, default=sources)
+
     if st.button("ابحث", type="primary"):
         q = query.strip()
         if not q:
             st.warning("اكتب نصًا للبحث أولًا.")
         else:
+            from rapidfuzz import fuzz
+
             q_norm = normalize_ar(q)
-            results = df_hadith.copy()
-            results["similarity"] = results["matn"].astype(str).apply(
-                lambda x: similarity_by_reference_words(q_norm, x)
-            )
-            results = results[results["similarity"] >= float(min_sim)]
-            results = results.sort_values("similarity", ascending=False).head(int(top_k))
+
+            # فلترة حسب المصدر
+            df = df_hadith.copy()
+            if source_filter:
+                df = df[df["source"].astype(str).isin(source_filter)]
+
+            # درجات البحث
+            df["matn_norm"] = df["matn"].astype(str).apply(normalize_ar)
+            df["contains"] = df["matn_norm"].apply(lambda x: q_norm in x)
+
+            # Fuzzy (مرن لفظيًا)
+            df["fuzzy"] = df["matn_norm"].apply(lambda x: fuzz.token_set_ratio(q_norm, x))
+
+            # تشابه كلمات
+            df["similarity"] = df["matn"].astype(str).apply(lambda x: similarity_by_reference_words(q_norm, x))
+
+            # اختيار طريقة البحث
+            if search_mode == "احتواء النص":
+                results = df[df["contains"] == True]
+            elif search_mode == "تشابه بالكلمات":
+                results = df[df["similarity"] >= float(min_sim)]
+            else:
+                results = df[(df["contains"] == True) | (df["similarity"] >= float(min_sim))]
+
+            # ترتيب النتائج
+            results = results.sort_values(["contains", "fuzzy", "similarity"], ascending=[False, False, False]).head(int(top_k))
 
             if results.empty:
-                st.error("لا توجد نتائج ضمن حد التشابه المحدد.")
+                st.error("لا توجد نتائج. جرّب تخفيض حد التشابه أو غيّر كلمات البحث.")
             else:
-                st.success(f"تم العثور على {len(results)} طريق/رواية ضمن التشابه ≥ {min_sim}%")
+                st.success(f"تم العثور على {len(results)} نتيجة (طريق/رواية) ضمن الفلاتر المختارة.")
 
                 for hadith_key, grp in results.groupby("hadith_key"):
                     best = grp.iloc[0]
-                    with st.expander(f"حديث: {hadith_key} — أفضل تشابه: {best['similarity']:.2f}%", expanded=True):
+                    with st.expander(
+                        f"حديث: {hadith_key} — احتواء: {bool(best['contains'])} — Fuzzy: {best['fuzzy']:.0f}% — تشابه كلمات: {best['similarity']:.0f}%",
+                        expanded=True
+                    ):
                         st.write(f"**المتن:** {best['matn']}")
                         for _, r in grp.iterrows():
                             st.markdown(
-                                f"- **المصدر:** {r['source']} | **المرجع:** {r['ref']} | **التشابه:** {r['similarity']:.2f}%\n"
+                                f"- **المصدر:** {r['source']} | **المرجع:** {r['ref']} | **Fuzzy:** {r['fuzzy']:.0f}% | **تشابه كلمات:** {r['similarity']:.0f}%\n"
                                 f"  - **السند:** {r['isnad']}"
                             )
 
@@ -147,6 +175,7 @@ with tab1:
         "📌 لإضافة بياناتك الحقيقية: ضع ملف باسم **hadith_data.csv** داخل المستودع بنفس الأعمدة:\n"
         "`hadith_key, source, ref, isnad, matn`"
     )
+
 
 # ============ TAB 2 Placeholder ============
 with tab2:
@@ -157,6 +186,7 @@ with tab2:
 with tab3:
     st.subheader("📦 الكتب الحديثية (قيد التطوير)")
     st.write("سنضيف هنا لاحقًا: بطاقة الكتاب الحديثية والإحصاءات (عدد الأحاديث/الأسانيد/المتون/المكرر...).")
+
 
 
 
