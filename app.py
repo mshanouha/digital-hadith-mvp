@@ -117,6 +117,32 @@ with tab1:
     sources = sorted(df_hadith["source"].astype(str).unique().tolist())
     source_filter = st.multiselect("اختر المصدر/الكتاب", sources, default=sources)
 
+# فلاتر الكتاب والباب (تظهر فقط إذا كانت الأعمدة موجودة في البيانات)
+has_book = "book_name" in df_hadith.columns
+has_chapter = "chapter_name" in df_hadith.columns
+
+book_filter = None
+chapter_filter = None
+
+if has_book:
+    books = sorted(df_hadith["book_name"].dropna().astype(str).unique().tolist())
+    # افتراضيًا: كل الكتب
+    book_filter = st.multiselect("اختر الكتاب (كتاب الصلاة...)", books, default=books)
+
+if has_chapter:
+    # قائمة الأبواب تتبع اختيار الكتاب إن وجد
+    if has_book and book_filter:
+        chapters = sorted(
+            df_hadith[df_hadith["book_name"].astype(str).isin(book_filter)]["chapter_name"]
+            .dropna().astype(str).unique().tolist()
+        )
+    else:
+        chapters = sorted(df_hadith["chapter_name"].dropna().astype(str).unique().tolist())
+
+    # افتراضيًا: كل الأبواب
+    chapter_filter = st.multiselect("اختر الباب (باب صلاة الجمعة...)", chapters, default=chapters)
+
+
     if st.button("ابحث", type="primary"):
         q = query.strip()
         if not q:
@@ -129,6 +155,13 @@ with tab1:
 
             if source_filter:
                 df = df[df["source"].astype(str).isin(source_filter)]
+
+# فلترة الكتاب/الباب (إن كانت الأعمدة موجودة)
+if has_book and book_filter:
+    df = df[df["book_name"].astype(str).isin(book_filter)]
+
+if has_chapter and chapter_filter:
+    df = df[df["chapter_name"].astype(str).isin(chapter_filter)]
 
             df["matn_norm"] = df["matn"].astype(str).apply(normalize_ar)
             df["contains"] = df["matn_norm"].apply(lambda x: q_norm in x)
@@ -170,7 +203,7 @@ with tab1:
     st.divider()
     st.info(
         "📌 لإضافة بياناتك الحقيقية: ضع ملف باسم **hadith_data.csv** داخل المستودع بنفس الأعمدة:\n"
-        "`hadith_key, source, ref, isnad, matn`"
+        "`hadith_key, source, ref, isnad, matn` (اختياري لاحقًا: `book_name, chapter_name`)"
     )
 
 
@@ -183,13 +216,3 @@ with tab2:
 with tab3:
     st.subheader("📦 الكتب الحديثية (قيد التطوير)")
     st.write("سنضيف هنا لاحقًا: بطاقة الكتاب الحديثية والإحصاءات (عدد الأحاديث/الأسانيد/المتون/المكرر...).")
-
-
-
-
-
-
-
-
-
-
