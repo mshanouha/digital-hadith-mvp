@@ -142,63 +142,72 @@ if has_chapter:
     # افتراضيًا: كل الأبواب
     chapter_filter = st.multiselect("اختر الباب (باب صلاة الجمعة...)", chapters, default=chapters)
 
+if st.button("ابحث", type="primary"):
+    q = query.strip()
+    if not q:
+        st.warning("اكتب نصًا للبحث أولًا.")
+    else:
+        from rapidfuzz import fuzz
 
-    if st.button("ابحث", type="primary"):
-        q = query.strip()
-        if not q:
-            st.warning("اكتب نصًا للبحث أولًا.")
+        q_norm = normalize_ar(q)
+
+        # نسخة العمل
+        df = df_hadith.copy()
+
+        # فلترة المصدر
+        if source_filter:
+            df = df[df["source"].astype(str).isin(source_filter)]
+
+        # فلترة الكتاب/الباب (إن وُجدت)
+        if has_book and book_filter:
+            df = df[df["book_name"].astype(str).isin(book_filter)]
+
+        if has_chapter and chapter_filter:
+            df = df[df["chapter_name"].astype(str).isin(chapter_filter)]
+
+        # تجهيز النص
+        df["matn_norm"] = df["matn"].astype(str).apply(normalize_ar)
+
+        # درجات البحث
+        df["contains"] = df["matn_norm"].apply(lambda x: q_norm in x)
+        df["fuzzy"] = df["matn_norm"].apply(lambda x: fuzz.token_set_ratio(q_norm, x))
+        df["similarity"] = df["matn"].astype(str).apply(
+            lambda x: similarity_by_reference_words(q_norm, x)
+        )
+
+        # اختيار طريقة البحث
+        if search_mode == "احتواء النص":
+            results = df[df["contains"]]
+        elif search_mode == "تشابه بالكلمات":
+            results = df[df["similarity"] >= float(min_sim)]
         else:
-            from rapidfuzz import fuzz
+            results = df[(df["contains"]) | (df["similarity"] >= float(min_sim))]
 
-            q_norm = normalize_ar(q)
-            df = df_hadith.copy()
+        # ترتيب النتائج
+        results = results.sort_values(
+            ["contains", "fuzzy", "similarity"],
+            ascending=[False, False, False]
+        ).head(int(top_k))
 
-            if source_filter:
-                df = df[df["source"].astype(str).isin(source_filter)]
+        if results.empty:
+            st.error("لا توجد نتائج. جرّب تغيير الكلمات أو تخفيض حد التشابه.")
+        else:
+            st.success(f"تم العثور على {len(results)} نتيجة (طريق/رواية).")
 
-# فلترة الكتاب/الباب (إن كانت الأعمدة موجودة)
-if has_book and book_filter:
-    df = df[df["book_name"].astype(str).isin(book_filter)]
+            for hadith_key, grp in results.groupby("hadith_key"):
+                best = grp.iloc[0]
+                with st.expander(
+                    f"حديث: {hadith_key} — Fuzzy: {best['fuzzy']:.0f}% — تشابه كلمات: {best['similarity']:.0f}%",
+                    expanded=True
+                ):
+                    st.write(f"**المتن:** {best['matn']}")
+                    for _, r in grp.iterrows():
+                        st.markdown(
+                            f"- **المصدر:** {r['source']} | **المرجع:** {r['ref']}\n"
+                            f"  - **السند:** {r['isnad']}"
+                        )
 
-if has_chapter and chapter_filter:
-    df = df[df["chapter_name"].astype(str).isin(chapter_filter)]
-
-            df["matn_norm"] = df["matn"].astype(str).apply(normalize_ar)
-            df["contains"] = df["matn_norm"].apply(lambda x: q_norm in x)
-            df["fuzzy"] = df["matn_norm"].apply(lambda x: fuzz.token_set_ratio(q_norm, x))
-            df["similarity"] = df["matn"].astype(str).apply(
-                lambda x: similarity_by_reference_words(q_norm, x)
-            )
-
-            if search_mode == "احتواء النص":
-                results = df[df["contains"]]
-            elif search_mode == "تشابه بالكلمات":
-                results = df[df["similarity"] >= float(min_sim)]
-            else:
-                results = df[(df["contains"]) | (df["similarity"] >= float(min_sim))]
-
-            results = results.sort_values(
-                ["contains", "fuzzy", "similarity"],
-                ascending=[False, False, False]
-            ).head(int(top_k))
-
-            if results.empty:
-                st.error("لا توجد نتائج. جرّب تغيير الكلمات أو تخفيض حد التشابه.")
-            else:
-                st.success(f"تم العثور على {len(results)} نتيجة (طريق/رواية).")
-
-                for hadith_key, grp in results.groupby("hadith_key"):
-                    best = grp.iloc[0]
-                    with st.expander(
-                        f"حديث: {hadith_key} — Fuzzy: {best['fuzzy']:.0f}% — تشابه كلمات: {best['similarity']:.0f}%",
-                        expanded=True
-                    ):
-                        st.write(f"**المتن:** {best['matn']}")
-                        for _, r in grp.iterrows():
-                            st.markdown(
-                                f"- **المصدر:** {r['source']} | **المرجع:** {r['ref']}\n"
-                                f"  - **السند:** {r['isnad']}"
-                            )
+   
 
     st.divider()
     st.info(
