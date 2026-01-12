@@ -4,11 +4,14 @@ import streamlit as st
 
 # ================== CONFIG ==================
 st.set_page_config(page_title="منصة أطلس السنة – MVP", layout="wide")
-st.write("VERSION: ATLAS-CORE v0.6")
+st.write("VERSION: ATLAS-CORE v0.7")
 
 # ================== Session State ==================
 if "query_text" not in st.session_state:
-    st.session_state.query_text = ""
+    st.session_state["query_text"] = ""
+
+def clear_query():
+    st.session_state["query_text"] = ""
 
 # ================== Arabic helpers ==================
 AR_DIACRITICS = re.compile(r"[\u0617-\u061A\u064B-\u0652\u0670\u06D6-\u06ED]")
@@ -84,8 +87,7 @@ with tab1:
         value=True
     )
 
-    if st.button("🧹 مسح نص البحث"):
-        st.session_state.query_text = ""
+    st.button("🧹 مسح نص البحث", on_click=clear_query)
 
     if st.button("ابحث", type="primary"):
         if not query.strip():
@@ -156,5 +158,6 @@ with tab2:
         "- لا تُصدر أحكامًا حديثية\n"
         "- لا تفصل السند والمتن آليًا\n"
         "- تُستخدم لبناء بطاقة الحديث الأطلسية\n\n"
-        "النص يبقى محفوظًا عند تغيير الإعدادات."
+        "النص يبقى محفوظًا عند تغيير الإعدادات،\n"
+        "ولا يُمسح إلا يدويًا أو عند إعادة تحميل الصفحة."
     )
