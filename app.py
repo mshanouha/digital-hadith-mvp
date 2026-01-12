@@ -4,7 +4,11 @@ import streamlit as st
 
 # ================== CONFIG ==================
 st.set_page_config(page_title="منصة أطلس السنة – MVP", layout="wide")
-st.write("VERSION: ATLAS-STRICT v0.4")
+st.write("VERSION: ATLAS-CORE v0.6")
+
+# ================== Session State ==================
+if "query_text" not in st.session_state:
+    st.session_state.query_text = ""
 
 # ================== Arabic helpers ==================
 AR_DIACRITICS = re.compile(r"[\u0617-\u061A\u064B-\u0652\u0670\u06D6-\u06ED]")
@@ -28,51 +32,26 @@ def similarity_by_reference_words(reference: str, candidate: str) -> float:
     cand_tokens = tokenize_ar(candidate)
     if not ref_tokens:
         return 0.0
-    ref_set = set(ref_tokens)
-    cand_set = set(cand_tokens)
-    shared = len(ref_set.intersection(cand_set))
-    return (shared / len(ref_set)) * 100.0
+    shared = len(set(ref_tokens) & set(cand_tokens))
+    return (shared / len(ref_tokens)) * 100.0
 
-def contains_all_words(reference: str, candidate: str) -> bool:
-    """
-    بحث أطلسي صارم:
-    True إذا كان المتن يحتوي على جميع كلمات المتن المرجعي
-    """
+def contains_most_words(reference: str, candidate: str, threshold: float = 0.8) -> bool:
     ref_tokens = tokenize_ar(reference)
     cand_tokens = tokenize_ar(candidate)
     if not ref_tokens:
         return False
-    return all(tok in cand_tokens for tok in ref_tokens)
+    shared = sum(1 for tok in ref_tokens if tok in cand_tokens)
+    return (shared / len(ref_tokens)) >= threshold
 
 # ================== Data loading ==================
 @st.cache_data
 def load_hadith_data():
-    try:
-        df = pd.read_csv("hadith_data.csv")
-        needed = {"hadith_key", "source", "ref", "isnad", "matn"}
-        missing = needed - set(df.columns)
-        if missing:
-            raise ValueError(f"Missing columns: {missing}")
-        return df
-    except Exception:
-        # fallback sample
-        sample = [
-            {
-                "hadith_key": "B00001",
-                "source": "عينة",
-                "ref": "1",
-                "isnad": "فلان عن فلان",
-                "matn": "انما الاعمال بالنيات وانما لكل امرئ ما نوى"
-            },
-            {
-                "hadith_key": "B00002",
-                "source": "عينة",
-                "ref": "2",
-                "isnad": "فلان عن فلان",
-                "matn": "الدين النصيحه قلنا لمن قال لله ولكتابه"
-            },
-        ]
-        return pd.DataFrame(sample)
+    df = pd.read_csv("hadith_data.csv")
+    needed = {"hadith_key", "source", "ref", "isnad", "matn"}
+    missing = needed - set(df.columns)
+    if missing:
+        raise ValueError(f"Missing columns: {missing}")
+    return df
 
 df_hadith = load_hadith_data()
 
@@ -88,6 +67,7 @@ with tab1:
     query = st.text_area(
         "نص البحث (يمكن إدخال أكثر من حديث – كل حديث في سطر مستقل)",
         height=120,
+        key="query_text",
         placeholder="مثال:\nالدين النصيحة\nإنما الأعمال بالنيات"
     )
 
@@ -99,26 +79,20 @@ with tab1:
     with col3:
         atlas_mode = st.checkbox("🧭 وضع الأطلس (عرض كل الطرق)", value=True)
 
-    strict_all_words = st.checkbox(
-        "🔒 بحث أطلسي صارم (يشترط وجود جميع كلمات الحديث)",
+    strict_core = st.checkbox(
+        "🔒 بحث أطلسي (يشترط نواة الحديث ≥ 80٪)",
         value=True
     )
 
-    search_mode = st.selectbox(
-        "طريقة البحث (عند تعطيل الصرامة)",
-        ["الاثنين معًا (أفضل)", "احتواء النص", "تشابه بالكلمات"],
-        index=0
-    )
+    if st.button("🧹 مسح نص البحث"):
+        st.session_state.query_text = ""
 
     if st.button("ابحث", type="primary"):
         if not query.strip():
             st.warning("اكتب نصًا للبحث أولًا.")
         else:
-            from rapidfuzz import fuzz
-
             queries = [q.strip() for q in query.split("\n") if q.strip()]
             df = df_hadith.copy()
-            df["matn_norm"] = df["matn"].astype(str).apply(normalize_ar)
 
             all_results = []
 
@@ -126,30 +100,18 @@ with tab1:
                 q_norm = normalize_ar(q)
                 temp = df.copy()
 
-                temp["contains_all"] = temp["matn"].astype(str).apply(
-                    lambda x: contains_all_words(q_norm, x)
-                )
-
-                temp["contains"] = temp["matn_norm"].apply(
-                    lambda x: q_norm in x
+                temp["core_match"] = temp["matn"].astype(str).apply(
+                    lambda x: contains_most_words(q_norm, x, threshold=0.8)
                 )
 
                 temp["similarity"] = temp["matn"].astype(str).apply(
                     lambda x: similarity_by_reference_words(q_norm, x)
                 )
 
-                if strict_all_words:
-                    temp = temp[temp["contains_all"]]
+                if strict_core:
+                    temp = temp[temp["core_match"]]
                 else:
-                    if search_mode == "احتواء النص":
-                        temp = temp[temp["contains"]]
-                    elif search_mode == "تشابه بالكلمات":
-                        temp = temp[temp["similarity"] >= float(min_sim)]
-                    else:
-                        temp = temp[
-                            (temp["contains"]) |
-                            (temp["similarity"] >= float(min_sim))
-                        ]
+                    temp = temp[temp["similarity"] >= float(min_sim)]
 
                 all_results.append(temp)
 
@@ -158,7 +120,7 @@ with tab1:
             if not atlas_mode:
                 results = results.sort_values(
                     ["similarity"],
-                    ascending=[False]
+                    ascending=False
                 ).head(int(top_k))
             else:
                 results = results.sort_values(["hadith_key", "ref"])
@@ -190,10 +152,9 @@ with tab1:
 # ================== TAB 2 ==================
 with tab2:
     st.info(
-        "🔹 هذه المنصة أداة تحضير أطلسية:\n"
-        "- لا تُصدر أحكام صحة أو ضعف\n"
+        "هذه المنصة أداة تحضير أطلسية:\n"
+        "- لا تُصدر أحكامًا حديثية\n"
         "- لا تفصل السند والمتن آليًا\n"
         "- تُستخدم لبناء بطاقة الحديث الأطلسية\n\n"
-        "🔹 البحث الصارم هو الوضع الافتراضي لبناء وحدة الحديث.\n"
-        "🔹 يمكن تعطيله للبحث الاستكشافي فقط."
+        "النص يبقى محفوظًا عند تغيير الإعدادات."
     )
