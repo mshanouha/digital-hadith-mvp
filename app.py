@@ -6,7 +6,7 @@ import streamlit as st
 # CONFIG
 # ======================================================
 st.set_page_config(page_title="أطلس السنة – التحقيق الحديثي", layout="wide")
-st.write("VERSION: ATLAS-HADITH v1.0")
+st.write("VERSION: ATLAS-HADITH v1.1")
 
 # ======================================================
 # SESSION STATE
@@ -23,14 +23,12 @@ if "query_text" not in st.session_state:
 def go_to_analysis(hadith_key):
     st.session_state.active_hadith = hadith_key
     st.session_state.page = "analysis"
-    st.rerun()
 
 def go_to_search():
     st.session_state.page = "search"
-    st.rerun()
 
 # ======================================================
-# ARABIC HELPERS
+# ARABIC NORMALIZATION
 # ======================================================
 AR_DIACRITICS = re.compile(r"[\u0617-\u061A\u064B-\u0652\u0670\u06D6-\u06ED]")
 
@@ -55,48 +53,43 @@ def contains_core(reference, candidate):
 
     shared = sum(1 for tok in ref_tokens if tok in cand_tokens)
 
-    # 🔒 تشديد للمتون القصيرة
     if len(ref_tokens) <= 4:
         return shared == len(ref_tokens)
 
-    # مرونة للمتون الأطول
     return (shared / len(ref_tokens)) >= 0.8
 
 # ======================================================
-# DATA LOADING
+# DATA
 # ======================================================
 @st.cache_data
 def load_data():
     df = pd.read_csv("hadith_data.csv")
-    required = {"hadith_key", "source", "ref", "isnad", "matn"}
-    if not required.issubset(df.columns):
-        raise ValueError("ملف البيانات لا يحتوي الأعمدة المطلوبة")
     return df
 
 df_hadith = load_data()
 
 # ======================================================
-# SCORING LOGIC
+# SCORING & VISUALS
 # ======================================================
-def score_color(score):
+def score_label(score):
     if score >= 9:
-        return "🟢 قوي جدًا"
+        return "قوي جدًا"
     elif score >= 7:
-        return "🟢 قوي"
+        return "قوي"
     elif score >= 5:
-        return "🟡 متوسط"
+        return "متوسط"
     elif score >= 3:
-        return "🟠 ضعيف"
+        return "ضعيف"
     else:
-        return "🔴 ضعيف جدًا"
+        return "ضعيف جدًا"
 
 def hadith_global_score(scores):
     if not scores:
         return 0
     max_score = max(scores)
     avg_score = sum(scores) / len(scores)
-    strong_paths = len([s for s in scores if s >= 7])
-    final = (0.5 * max_score) + (0.3 * avg_score) + (0.2 * strong_paths)
+    strong = len([s for s in scores if s >= 7])
+    final = (0.5 * max_score) + (0.3 * avg_score) + (0.2 * strong)
     return round(min(final, 10), 1)
 
 def hadith_description(score):
@@ -110,6 +103,29 @@ def hadith_description(score):
         return "حديث ضعيف"
     else:
         return "حديث ضعيف جدًا"
+
+def render_color_bar(score):
+    colors = [
+        "#d73027", "#f46d43", "#fdae61", "#fee08b",
+        "#ffffbf", "#d9ef8b", "#a6d96a", "#66bd63",
+        "#1a9850", "#006837"
+    ]
+    active = int(round(score)) - 1
+    blocks = ""
+    for i, c in enumerate(colors):
+        opacity = "1" if i <= active else "0.25"
+        blocks += f"""
+        <div style="
+            width:28px;
+            height:16px;
+            margin:2px;
+            background:{c};
+            opacity:{opacity};
+            display:inline-block;
+            border-radius:4px;">
+        </div>
+        """
+    st.markdown(blocks, unsafe_allow_html=True)
 
 # ======================================================
 # PAGE: SEARCH
@@ -135,13 +151,10 @@ if st.session_state.page == "search":
             results = []
 
             for q in queries:
-                q_norm = normalize_ar(q)
                 temp = df_hadith.copy()
-                temp["core_match"] = temp["matn"].apply(
-                lambda x: contains_core(q_norm, x)
-                )
+                temp["match"] = temp["matn"].apply(lambda x: contains_core(q, x))
                 if strict_core:
-                    temp = temp[temp["core_match"]]
+                    temp = temp[temp["match"]]
                 results.append(temp)
 
             results = pd.concat(results).drop_duplicates()
@@ -149,17 +162,13 @@ if st.session_state.page == "search":
             if results.empty:
                 st.error("لا توجد نتائج")
             else:
-                st.success(
-                    f"تم العثور على {results['hadith_key'].nunique()} وحدة حديثية"
-                )
+                st.success(f"تم العثور على {results['hadith_key'].nunique()} وحدة حديثية")
 
                 for hadith_key, grp in results.groupby("hadith_key"):
                     with st.expander(f"🧭 وحدة حديث: {hadith_key}", expanded=False):
                         st.write("📌 المتن المرجعي:")
                         st.write(grp.iloc[0]["matn"])
-
                         st.write(f"عدد الروايات: {len(grp)}")
-
                         st.button(
                             "🔎 الانتقال إلى التحقيق الحديثي",
                             key=f"analyze_{hadith_key}",
@@ -175,51 +184,44 @@ if st.session_state.page == "analysis":
     hadith_key = st.session_state.active_hadith
     st.title(f"🧭 التحقيق الحديثي – {hadith_key}")
 
-    hadith_data = df_hadith[df_hadith["hadith_key"] == hadith_key]
+    data = df_hadith[df_hadith["hadith_key"] == hadith_key]
 
-    st.subheader("📌 النص النووي للحديث")
-    st.write(hadith_data.iloc[0]["matn"])
+    st.subheader("📌 النص النووي")
+    st.write(data.iloc[0]["matn"])
 
     st.markdown("---")
-    st.subheader("🧵 تقييم الطرق السندية")
+    st.subheader("🧵 تقييم الطرق السندية (طرق حقيقية)")
 
     scores = []
 
-    for idx, row in hadith_data.iterrows():
-        with st.container():
-            st.markdown(
-                f"**الطريق:** {row['isnad']}  \n"
-                f"**المصدر:** {row['source']} | {row['ref']}"
-            )
+    for isnad, group in data.groupby("isnad"):
+        st.markdown(f"**السند:** {isnad}")
+        st.write(f"عدد الروايات في هذا الطريق: {len(group)}")
 
-            score = st.slider(
-                "درجة الطريق (0–10)",
-                0, 10, 7,
-                key=f"score_{idx}"
-            )
+        score = st.slider(
+            "درجة الطريق (0–10)",
+            0, 10, 7,
+            key=f"score_{isnad}"
+        )
 
-            st.write(score_color(score))
-            scores.append(score)
-
-            st.markdown("---")
+        st.write(f"التوصيف: {score_label(score)}")
+        scores.append(score)
+        st.markdown("---")
 
     final_score = hadith_global_score(scores)
 
     st.subheader("📊 المؤشر النهائي للحديث")
-    st.metric("الدرجة النهائية", f"{final_score} / 10")
+    st.write(f"الدرجة: {final_score} / 10")
+    render_color_bar(final_score)
     st.write(hadith_description(final_score))
 
     st.markdown("---")
-    st.subheader("📝 الحكم الحديثي النهائي")
-
     verdict = st.selectbox(
-        "التصنيف",
+        "الحكم الحديثي النهائي",
         ["صحيح قطعي", "صحيح", "حسن", "مختلف فيه", "ضعيف"]
     )
 
-    notes = st.text_area("خلاصة التحقيق الحديثي")
+    notes = st.text_area("📝 خلاصة التحقيق")
 
-    if st.button("💾 حفظ التقييم"):
-        st.success("تم حفظ التقييم (حاليًا في الذاكرة فقط).")
-
-    st.button("↩️ العودة إلى البحث", on_click=go_to_search)
+    if st.button("↩️ العودة إلى البحث"):
+        go_to_search()
