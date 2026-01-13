@@ -6,7 +6,7 @@ import streamlit as st
 # CONFIG
 # ======================================================
 st.set_page_config(page_title="أطلس السنة – التحقيق الحديثي", layout="wide")
-st.write("VERSION: ATLAS-HADITH v1.1")
+st.write("VERSION: ATLAS-HADITH v1.2")
 
 # ======================================================
 # SESSION STATE
@@ -44,6 +44,21 @@ def normalize_ar(text):
 def tokenize_ar(text):
     return normalize_ar(text).split()
 
+# ======================================================
+# ISNAD NORMALIZATION (KEY FIX)
+# ======================================================
+def normalize_isnad(isnad):
+    if not isnad:
+        return ""
+    isnad = normalize_ar(isnad)
+    for w in ["حدثنا", "اخبرنا", "قال", "سمعت", "عن"]:
+        isnad = isnad.replace(w, "")
+    isnad = re.sub(r"\s+", " ", isnad)
+    return isnad.strip()
+
+# ======================================================
+# CORE MATCHING
+# ======================================================
 def contains_core(reference, candidate):
     ref_tokens = tokenize_ar(reference)
     cand_tokens = tokenize_ar(candidate)
@@ -64,12 +79,13 @@ def contains_core(reference, candidate):
 @st.cache_data
 def load_data():
     df = pd.read_csv("hadith_data.csv")
+    df["isnad_norm"] = df["isnad"].apply(normalize_isnad)
     return df
 
 df_hadith = load_data()
 
 # ======================================================
-# SCORING & VISUALS
+# SCORING
 # ======================================================
 def score_label(score):
     if score >= 9:
@@ -84,8 +100,6 @@ def score_label(score):
         return "ضعيف جدًا"
 
 def hadith_global_score(scores):
-    if not scores:
-        return 0
     max_score = max(scores)
     avg_score = sum(scores) / len(scores)
     strong = len([s for s in scores if s >= 7])
@@ -137,8 +151,7 @@ if st.session_state.page == "search":
     query = st.text_area(
         "نص البحث (كل حديث في سطر مستقل)",
         height=120,
-        key="query_text",
-        placeholder="مثال:\nإنما الأعمال بالنيات\nمن كذب علي متعمدا"
+        key="query_text"
     )
 
     strict_core = st.checkbox("🔒 بحث أطلسي صارم (نواة الحديث ≥ 80٪)", value=True)
@@ -166,7 +179,7 @@ if st.session_state.page == "search":
 
                 for hadith_key, grp in results.groupby("hadith_key"):
                     with st.expander(f"🧭 وحدة حديث: {hadith_key}", expanded=False):
-                        st.write("📌 المتن المرجعي:")
+                        st.write("📌 المتن النووي:")
                         st.write(grp.iloc[0]["matn"])
                         st.write(f"عدد الروايات: {len(grp)}")
                         st.button(
@@ -194,19 +207,23 @@ if st.session_state.page == "analysis":
 
     scores = []
 
-    for isnad, group in data.groupby("isnad"):
-        st.markdown(f"**السند:** {isnad}")
+    for isnad_norm, group in data.groupby("isnad_norm"):
+        st.markdown(f"**السند (مجرّد):** {isnad_norm}")
         st.write(f"عدد الروايات في هذا الطريق: {len(group)}")
 
         score = st.slider(
             "درجة الطريق (0–10)",
             0, 10, 7,
-            key=f"score_{isnad}"
+            key=f"score_{isnad_norm}"
         )
 
         st.write(f"التوصيف: {score_label(score)}")
         scores.append(score)
         st.markdown("---")
+
+    if not scores or all(s == 0 for s in scores):
+        st.warning("⚠️ لم يتم إدخال تقييم للطرق بعد، المؤشر النهائي غير محسوب")
+        st.stop()
 
     final_score = hadith_global_score(scores)
 
