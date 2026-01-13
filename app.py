@@ -46,13 +46,21 @@ def normalize_ar(text):
 def tokenize_ar(text):
     return normalize_ar(text).split()
 
-def contains_most_words(reference, candidate, threshold=0.8):
+def contains_core(reference, candidate):
     ref_tokens = tokenize_ar(reference)
     cand_tokens = tokenize_ar(candidate)
+
     if not ref_tokens:
         return False
+
     shared = sum(1 for tok in ref_tokens if tok in cand_tokens)
-    return (shared / len(ref_tokens)) >= threshold
+
+    # 🔒 تشديد للمتون القصيرة
+    if len(ref_tokens) <= 4:
+        return shared == len(ref_tokens)
+
+    # مرونة للمتون الأطول
+    return (shared / len(ref_tokens)) >= 0.8
 
 # ======================================================
 # DATA LOADING
@@ -130,7 +138,7 @@ if st.session_state.page == "search":
                 q_norm = normalize_ar(q)
                 temp = df_hadith.copy()
                 temp["core_match"] = temp["matn"].apply(
-                    lambda x: contains_most_words(q_norm, x)
+                lambda x: contains_core(q_norm, x)
                 )
                 if strict_core:
                     temp = temp[temp["core_match"]]
