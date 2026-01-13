@@ -23,11 +23,11 @@ if "query_text" not in st.session_state:
 def go_to_analysis(hadith_key):
     st.session_state.active_hadith = hadith_key
     st.session_state.page = "analysis"
-    st.experimental_rerun()
+    st.rerun()
 
 def go_to_search():
     st.session_state.page = "search"
-    st.experimental_rerun()
+    st.rerun()
 
 # ======================================================
 # ARABIC HELPERS
