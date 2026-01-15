@@ -22,7 +22,7 @@ if "similar_results" not in st.session_state:
 
 def go(page):
     st.session_state.page = page
-
+    st.rerun()
 # ======================================================
 # NORMALIZATION
 # ======================================================
