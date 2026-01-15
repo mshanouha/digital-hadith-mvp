@@ -6,7 +6,7 @@ import streamlit as st
 # CONFIG
 # ======================================================
 st.set_page_config(page_title="أطلس السنة", layout="wide")
-st.write("VERSION: ATLAS-HADITH v1.4")
+st.write("VERSION: ATLAS-HADITH v1.5")
 
 # ======================================================
 # SESSION STATE
@@ -20,9 +20,25 @@ if "active_hadith" not in st.session_state:
 if "similar_results" not in st.session_state:
     st.session_state.similar_results = None
 
+
 def go(page):
     st.session_state.page = page
     st.rerun()
+
+# ======================================================
+# ROUTING (VERY IMPORTANT)
+# ======================================================
+def route():
+    if st.session_state.page == "search":
+        page_search()
+        st.stop()
+    elif st.session_state.page == "unit":
+        page_unit()
+        st.stop()
+    elif st.session_state.page == "analysis":
+        page_analysis()
+        st.stop()
+
 # ======================================================
 # NORMALIZATION
 # ======================================================
@@ -53,7 +69,7 @@ def normalize_isnad(isnad):
     return isnad.strip()
 
 # ======================================================
-# CORE MATCH (STRICT – USED ONLY IN ANALYSIS)
+# STRICT CORE MATCH (ONLY FOR ANALYSIS)
 # ======================================================
 def contains_core(reference, candidate):
     ref_tokens = tokenize_ar(reference)
@@ -78,7 +94,7 @@ def load_data():
 df = load_data()
 
 # ======================================================
-# VISUAL SCORE BAR (NON INTERACTIVE)
+# VISUAL BAR (NON INTERACTIVE)
 # ======================================================
 def render_bar(score):
     colors = [
@@ -91,19 +107,24 @@ def render_bar(score):
     for i, c in enumerate(colors):
         opacity = "1" if i <= active else "0.25"
         html += f"""
-        <div style="width:24px;height:14px;
-        background:{c};opacity:{opacity};
-        display:inline-block;margin:2px;border-radius:4px;"></div>
+        <div style="
+            width:24px;
+            height:14px;
+            background:{c};
+            opacity:{opacity};
+            display:inline-block;
+            margin:2px;
+            border-radius:4px;">
+        </div>
         """
     st.markdown(html, unsafe_allow_html=True)
 
 # ======================================================
-# PAGE 1: SEARCH (DISCOVERY)
+# PAGE 1 — SEARCH
 # ======================================================
-if st.session_state.page == "search":
-
+def page_search():
     st.title("🔍 البحث عن الحديث")
-    st.write("أدخل كلمة أو أكثر للعثور على الأحاديث التي تحتويها (بحث لغوي فقط).")
+    st.write("بحث لغوي عام: أدخل كلمة أو أكثر.")
 
     query = st.text_input("نص البحث")
 
@@ -111,25 +132,27 @@ if st.session_state.page == "search":
         tokens = tokenize_ar(query)
         if not tokens:
             st.warning("أدخل كلمة واحدة على الأقل")
-        else:
-            results = df.copy()
-            for t in tokens:
-                results = results[results["matn_norm"].str.contains(t)]
-            if results.empty:
-                st.error("لا توجد نتائج")
-            else:
-                for key, grp in results.groupby("hadith_key"):
-                    with st.expander(f"🧭 حديث: {key}"):
-                        st.write(grp.iloc[0]["matn"])
-                        if st.button("🧭 اختيار هذا الحديث", key=f"sel_{key}"):
-                            st.session_state.active_hadith = key
-                            go("unit")
+            return
+
+        results = df.copy()
+        for t in tokens:
+            results = results[results["matn_norm"].str.contains(t)]
+
+        if results.empty:
+            st.error("لا توجد نتائج")
+            return
+
+        for key, grp in results.groupby("hadith_key"):
+            with st.expander(f"🧭 حديث: {key}"):
+                st.write(grp.iloc[0]["matn"])
+                if st.button("🧭 اختيار هذا الحديث", key=f"sel_{key}"):
+                    st.session_state.active_hadith = key
+                    go("unit")
 
 # ======================================================
-# PAGE 2: HADITH UNIT
+# PAGE 2 — HADITH UNIT
 # ======================================================
-if st.session_state.page == "unit":
-
+def page_unit():
     key = st.session_state.active_hadith
     data = df[df["hadith_key"] == key]
 
@@ -138,7 +161,6 @@ if st.session_state.page == "unit":
     st.write(data.iloc[0]["matn"])
 
     st.markdown("---")
-
     col1, col2 = st.columns(2)
 
     with col1:
@@ -158,10 +180,9 @@ if st.session_state.page == "unit":
         go("search")
 
 # ======================================================
-# PAGE 3: ANALYSIS
+# PAGE 3 — ANALYSIS
 # ======================================================
-if st.session_state.page == "analysis":
-
+def page_analysis():
     data = st.session_state.similar_results
 
     st.title("🔬 التحقيق الحديثي والمتشابه")
@@ -186,6 +207,10 @@ if st.session_state.page == "analysis":
         st.write(f"الدرجة: {final} / 10")
         render_bar(final)
 
-    st.markdown("---")
     if st.button("↩️ العودة لوحدة الحديث"):
         go("unit")
+
+# ======================================================
+# RUN APP
+# ======================================================
+route()
