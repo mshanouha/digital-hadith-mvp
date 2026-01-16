@@ -134,9 +134,9 @@ def page_search():
             st.warning("أدخل كلمة واحدة على الأقل")
             return
 
-        results = df.copy()
-        for t in tokens:
-            results = results[results["matn_norm"].str.contains(t)]
+        pattern = "|".join(tokens)
+        results = df[df["matn_norm"].str.contains(pattern, regex=True)]
+
 
         if results.empty:
             st.error("لا توجد نتائج")
