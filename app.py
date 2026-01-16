@@ -124,47 +124,58 @@ def render_bar(score):
 # ======================================================
 def page_search():
     st.title("🔍 البحث عن الحديث")
-    st.write("بحث لغوي عام: أدخل كلمة أو أكثر.")
+    st.write("بحث لغوي عام: أدخل كلمة أو أكثر (يجب أن تجتمع الكلمات معًا).")
 
     query = st.text_input("نص البحث")
 
     if st.button("ابحث", type="primary"):
         query = query.strip()
+
         if not query:
             st.warning("أدخل كلمة واحدة على الأقل")
             return
 
-        query_norm = normalize_ar(query)
-        tokens = tokenize_ar(query_norm)
+        tokens = tokenize_ar(query)
 
         if not tokens:
-            st.warning("أدخل كلمة صالحة")
+            st.warning("النص غير صالح للبحث")
             return
 
-        # 1️⃣ محاولة البحث كعبارة كاملة أولًا
-        results_phrase = df[df["matn_norm"].str.contains(query_norm, regex=False)]
-
-        if not results_phrase.empty:
-            results = results_phrase
-            st.info("🔎 تم العثور على نتائج مطابقة للعبارة كاملة")
-        else:
-            # 2️⃣ fallback: OR بين الكلمات
-            pattern = "|".join(tokens)
-            results = df[df["matn_norm"].str.contains(pattern, regex=True)]
-            st.info("🔎 لم تُوجد العبارة كاملة، تم البحث بالكلمات منفصلة")
+        # =========================
+        # AND SEARCH (all words)
+        # =========================
+        results = df.copy()
+        for tok in tokens:
+            results = results[
+                results["matn_norm"].str.contains(tok, regex=False)
+            ]
 
         if results.empty:
-            st.error("لا توجد نتائج")
-            return
+            st.info("🔍 لم توجد عبارة كاملة، تم البحث بالكلمات المفردة")
 
+            # fallback OR search (اختياري)
+            pattern = "|".join(tokens)
+            results = df[df["matn_norm"].str.contains(pattern, regex=True)]
+
+            if results.empty:
+                st.error("لا توجد نتائج")
+                return
+
+        else:
+            st.success("🔎 تم العثور على نتائج مطابقة للعبارة كاملة")
+
+        # =========================
         # عرض النتائج
+        # =========================
         for key, grp in results.groupby("hadith_key"):
             with st.expander(f"🧭 حديث: {key}"):
                 st.write(grp.iloc[0]["matn"])
 
                 if st.button("🧭 اختيار هذا الحديث", key=f"sel_{key}"):
                     st.session_state.active_hadith = key
-                    go("unit")
+                    st.session_state.page = "unit"
+                    st.rerun()
+
 
 
 # ======================================================
