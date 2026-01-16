@@ -129,25 +129,43 @@ def page_search():
     query = st.text_input("نص البحث")
 
     if st.button("ابحث", type="primary"):
-        tokens = tokenize_ar(query)
-        if not tokens:
+        query = query.strip()
+        if not query:
             st.warning("أدخل كلمة واحدة على الأقل")
             return
 
-        pattern = "|".join(tokens)
-        results = df[df["matn_norm"].str.contains(pattern, regex=True)]
+        query_norm = normalize_ar(query)
+        tokens = tokenize_ar(query_norm)
 
+        if not tokens:
+            st.warning("أدخل كلمة صالحة")
+            return
+
+        # 1️⃣ محاولة البحث كعبارة كاملة أولًا
+        results_phrase = df[df["matn_norm"].str.contains(query_norm, regex=False)]
+
+        if not results_phrase.empty:
+            results = results_phrase
+            st.info("🔎 تم العثور على نتائج مطابقة للعبارة كاملة")
+        else:
+            # 2️⃣ fallback: OR بين الكلمات
+            pattern = "|".join(tokens)
+            results = df[df["matn_norm"].str.contains(pattern, regex=True)]
+            st.info("🔎 لم تُوجد العبارة كاملة، تم البحث بالكلمات منفصلة")
 
         if results.empty:
             st.error("لا توجد نتائج")
             return
 
+        # عرض النتائج
         for key, grp in results.groupby("hadith_key"):
             with st.expander(f"🧭 حديث: {key}"):
                 st.write(grp.iloc[0]["matn"])
+
                 if st.button("🧭 اختيار هذا الحديث", key=f"sel_{key}"):
                     st.session_state.active_hadith = key
                     go("unit")
+
 
 # ======================================================
 # PAGE 2 — HADITH UNIT
