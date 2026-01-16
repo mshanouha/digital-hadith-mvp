@@ -151,15 +151,9 @@ def page_search():
             ]
 
         if results.empty:
-            st.info("🔍 لم توجد عبارة كاملة، تم البحث بالكلمات المفردة")
+            st.warning("❌ لم تُوجد أي أحاديث تحتوي جميع الكلمات معًا")
+            return
 
-            # fallback OR search (اختياري)
-            pattern = "|".join(tokens)
-            results = df[df["matn_norm"].str.contains(pattern, regex=True)]
-
-            if results.empty:
-                st.error("لا توجد نتائج")
-                return
 
         else:
             st.success("🔎 تم العثور على نتائج مطابقة للعبارة كاملة")
