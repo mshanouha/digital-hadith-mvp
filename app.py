@@ -84,14 +84,45 @@ def contains_core(reference, candidate):
 # ======================================================
 # DATA
 # ======================================================
+
 @st.cache_data
 def load_data():
-    df = pd.read_csv("hadith_data.csv")
-    df["matn_norm"] = df["matn"].apply(normalize_ar)
-    df["isnad_norm"] = df["isnad"].apply(normalize_isnad)
-    return df
+    import glob
+    import os
 
-df = load_data()
+    files = glob.glob("data/*_raw.xlsx")
+    dfs = []
+
+    for f in files:
+        df = pd.read_excel(f)
+
+        # اسم الكتاب من الملف
+        book_name = os.path.basename(f).replace("_raw.xlsx", "")
+
+        df["source"] = book_name
+        df["source_file"] = os.path.basename(f)
+
+        dfs.append(df)
+
+    df_all = pd.concat(dfs, ignore_index=True)
+
+    # =========================
+    # توحيد الأسماء مع الكود الحالي
+    # =========================
+    df_all = df_all.rename(columns={
+        "raw_text": "matn"
+    })
+
+    df_all["matn_norm"] = df_all["matn"].apply(normalize_ar)
+    df_all["isnad_norm"] = df_all["matn"].apply(normalize_isnad)
+
+    # مفتاح مؤقت (سيتغير لاحقًا)
+    df_all["hadith_key"] = (
+        df_all["source"] + " | " +
+        df_all["hadith_number"].astype(str)
+    )
+
+    return df_all
 
 # ======================================================
 # VISUAL BAR (NON INTERACTIVE)
